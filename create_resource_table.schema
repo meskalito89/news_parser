@@ -1,0 +1,11 @@
+drop table resource;
+create table resource (
+    RESOURCE_ID int primary key,
+    RESOURCE_NAME varchar(255),
+    RESOURCE_URL varchar(255),
+    top_tag varchar(255) not null,
+    bottom_tag varchar(255) not null,
+    title_cut varchar(255) not null,
+    date_cut varchar(255) not null
+);
+

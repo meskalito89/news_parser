@@ -1,0 +1,2 @@
+drop table items;
+create table items:
