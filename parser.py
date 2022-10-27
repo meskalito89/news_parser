@@ -1,5 +1,5 @@
 from sqlalchemy import MetaData, Table, Column, Integer, String, Text, Date, ForeignKey, create_engine
-from sqlalchemy.orm import mapper, sessionmaker
+from sqlalchemy.orm import mapper, Session
 from bs4 import BeautifulSoup as bs
 from models import Resource, Items
 import requests
@@ -19,8 +19,8 @@ items = Table('items', meta, autoload=True)
 mapper(Resource, resource)
 mapper(Items, items)
 
-dbsession = sessionmaker(bind=engine)
-session = dbsession()
+# dbsession = sessionmaker(bind=engine)
+# session = dbsession()
 
 class Parser:
     def __init__(self,
@@ -40,10 +40,14 @@ class Parser:
         self.bottom_tag = bottom_tag
         self.title_cut = title_cut
         self.date_cut = date_cut
-        self.current_page = 1
+        self.current_page = current_page
         self.is_ended = False
         self.news_url = []
         self.parsed_row = dict()
+
+    def set_current_page(self):
+        with open(self.RESOURCE_ID) as file:
+            self.current_page = int(file.readline().strip())
 
     def get_full_url(self, href: str) -> dict:
         return urljoin(self.RESOURCE_URL+'/', str(href))
@@ -73,7 +77,6 @@ class Parser:
 
         except requests.exceptions.ConnectionError() as e:
             return []
-
 
 
     def parse_row(self, url: str) -> dict:
@@ -116,13 +119,29 @@ class Parser:
         return rows
 
 
-    def save_row(self):
-        print(self.parsed_row)
+def save_row(row):
+    with Session(engine) as session:
+        session.begin()
+        session.add(Items(**row))
+        session.commit()
     
-def all_parser_is_ended(list_of_parsers: list)->bool:
-    if sum([parser.is_ended])
+
+def write_current_page_of_parser(parser_name_file, page_number):
+    """Здесь я сохраню номер последней страницы с данными. В случае сбоя можно будет продолжить с нее"""
+    with open(parser_name_file, 'w') as f:
+        write(page_number)
+
+        
 
 if __name__ == "__main__":
     resources = [res.__dict__ for res in session.query(Resource).all()]
     parsers = [Parser(**re) for re in resources]
-    for 
+    page_number = 1
+    while parsers:
+        filter(lambda parser: not parser.is_ended, parser)
+        for parser in parsers:
+            rows = parser.parse_all_rows_of_page(page_number)
+            save_row(row)
+            pdb.set_trace()
+
+        page_number += 1
