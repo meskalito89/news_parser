@@ -1,14 +1,16 @@
-from sqlalchemy import MetaData, Table, Column, Integer, String, Text, Date, ForeignKey, create_engine
 from sqlalchemy.orm import mapper, Session
+from sqlalchemy import create_engine, MetaData, Table
+from time import sleep, mktime, time
 from bs4 import BeautifulSoup as bs
-from models import Resource, Items
+from random import shuffle, random
+from urllib.request import urljoin
+from datetime import datetime
+from os import path
+import dateparser
 import requests
 import pdb
-from urllib.request import urljoin
-from random import shuffle, random
-from time import sleep
-import dateparser
-from time import mktime, time
+
+from models import Resource, Items
 
 engine = create_engine("sqlite:///db.sqlite", echo=False)
 meta = MetaData(engine)
@@ -19,11 +21,10 @@ items = Table('items', meta, autoload=True)
 mapper(Resource, resource)
 mapper(Items, items)
 
-# dbsession = sessionmaker(bind=engine)
-# session = dbsession()
 
 class Parser:
     def __init__(self,
+                RESOURCE_NAME,
                 RESOURCE_ID,
                 RESOURCE_URL,
                 top_tag,
@@ -36,6 +37,7 @@ class Parser:
                 ):
         self.RESOURCE_ID = RESOURCE_ID
         self.RESOURCE_URL = RESOURCE_URL
+        self.RESOURCE_NAME = RESOURCE_NAME
         self.top_tag = top_tag
         self.bottom_tag = bottom_tag
         self.title_cut = title_cut
@@ -45,20 +47,24 @@ class Parser:
         self.news_url = []
         self.parsed_row = dict()
 
-    def set_current_page(self):
-        with open(self.RESOURCE_ID) as file:
-            self.current_page = int(file.readline().strip())
+    def read_last_page(self):
+        path_to_file = path.join("last_pages", self.RESOURCE_NAME)
+        with open(path_to_file) as file:
+            last_page = int(file.readline().strip())  
+            self.current_page = last_page
+            return last_page
 
-    def get_full_url(self, href: str) -> dict:
+    def get_full_url(self, href) -> dict:
         return urljoin(self.RESOURCE_URL+'/', str(href))
 
-    def get_news_links_from_page_n(self, n: int) -> list:
+    def get_news_links(self) -> list:
+
+        last_page_number = self.read_last_page()
+
         if self.is_ended:
-            raise requests.exceptions.ConnectionError()
+            raise requests.exceptions.BaseHTTPError()
 
-        self.current_page = n
-
-        page_of_all_news_link = self.get_full_url(n)
+        page_of_all_news_link = self.get_full_url(last_page_number + 1)
         try:
             response = requests.get(page_of_all_news_link)
 
@@ -73,9 +79,11 @@ class Parser:
             full_links = [self.get_full_url(href) for href in hrefs]
             self.news_url = full_links
             shuffle(self.news_url)
+
+            self.write_last_page(last_page_number + 1)
             return full_links
 
-        except requests.exceptions.ConnectionError() as e:
+        except requests.exceptions.BaseHTTPError() as e:
             return []
 
 
@@ -91,7 +99,7 @@ class Parser:
 
             date_str = bsobj.select_one(self.date_cut).get('datetime')
             date_obj = dateparser.parse(date_str)
-            row['nd_date'] = int(mktime(date_obj.timetuple()))
+            row['nd_date'] = mktime(date_obj.timetuple())
 
             row['s_date'] = int(time())
 
@@ -104,44 +112,49 @@ class Parser:
             random_time = random() * 10 + 2
             sleep(random_time)
 
+        
 
-    def parse_all_rows_of_page_n(self, n: int) -> list:
-        news_links = self.get_news_links_from_page_n(n)
-        shuffle(news_links)
+
+    def parse_all_rows_of_current_page(self) -> list:
+        last_page_number = self.read_last_page()
+        news_links = self.get_news_links()
         rows = []
         for link in news_links:
             try:
                 row = self.parse_row(link)
                 rows.append(row)
-
             except requests.exceptions.ConnectionError as err:
                 continue
+            except AttributeError:
+                continue
+
         return rows
 
 
-def save_row(row):
-    with Session(engine) as session:
-        session.begin()
-        session.add(Items(**row))
-        session.commit()
+    def write_last_page(self, page_number):
+        """Здесь я сохраню номер последней страницы с данными.
+        В случае сбоя можно будет продолжить с нее"""
+        path_to_file = path.join("last_pages", self.RESOURCE_NAME)
+        with open( path_to_file, 'w') as f:
+            f.write(str(page_number))
+
+
+    def save_rows(self, rows):
+        with Session(engine) as session:
+            session.begin()
+            for row in rows:
+                item = Items(**row)
+                session.add(item)
+                
+            session.commit()
     
 
-def write_current_page_of_parser(parser_name_file, page_number):
-    """Здесь я сохраню номер последней страницы с данными. В случае сбоя можно будет продолжить с нее"""
-    with open(parser_name_file, 'w') as f:
-        write(page_number)
-
-        
-
 if __name__ == "__main__":
-    resources = [res.__dict__ for res in session.query(Resource).all()]
+    with Session(engine) as session:
+        resources = [res.__dict__ for res in session.query(Resource).all()]
     parsers = [Parser(**re) for re in resources]
-    page_number = 1
     while parsers:
-        filter(lambda parser: not parser.is_ended, parser)
+        filter(lambda parser: not parser.is_ended, parsers)
         for parser in parsers:
-            rows = parser.parse_all_rows_of_page(page_number)
-            save_row(row)
-            pdb.set_trace()
-
-        page_number += 1
+            rows = parser.parse_all_rows_of_current_page()
+            parser.save_rows(rows)

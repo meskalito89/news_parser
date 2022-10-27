@@ -6,9 +6,9 @@ create table items (
     title text not null,
     content text not null,
     nd_date integer not null,
-    s_date timestamp default current_timestamp not null,
-    not_date date not null,
-    foreign key(res_id) references resource(resource_id)
+    s_date integer not null,
+    not_date varchar(10) not null,
+    foreign key(res_id) references resource(RESOURCE_ID)
 );
 
 --drop table if exists resource;

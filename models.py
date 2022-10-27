@@ -1,6 +1,7 @@
 class Resource:
     def __init__(self, resource_name, resource_url,
                 top_tag, bottom_tag,  title_cut, date_cut):
+        # self.RESOURCE_ID = RESOURCE_ID
         self.RESOURCE_NAME = resource_name
         self.RESOURCE_URL = resource_url
         self.top_tag = top_tag
